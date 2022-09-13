@@ -1,2 +1,2 @@
-# tiny_cloud
-Backend for a cloud service
+# Tiny Cloud
+Backend for a cloud service. Build with expressjs, mongodb and typescript! 
