@@ -5,18 +5,17 @@ export interface IUser {
   username: string;
   email: string;
   password: string;
-  folders: Array<IFolder>;
+  folders: IFolder[];
 }
 
 const userSchema = new Schema<IUser>({
-  username: { type: String, required: true, maxlength: 50},
+  username: { type: String, required: true, maxlength: 50 },
   email: { type: String, required: true, unique: true, maxlength: 255 },
   password: { type: String, required: true, maxlength: 80 },
   folders: {
     type: [
       {
         name: { type: String, required: true, maxlength: 255 },
-        type: { type: Number, required: true },
         dataID: { type: String, required: false },
       },
     ],

@@ -33,7 +33,6 @@ router.post("/signup", async (req: Request, res: Response) => {
 
   const userFolder: IFolder = {
     name: "/",
-    type: 0,
   };
 
   const newUser = new User({
@@ -42,7 +41,7 @@ router.post("/signup", async (req: Request, res: Response) => {
     password,
     folders: [userFolder],
   });
-
+  
   try {
     await newUser.save();
     res.sendStatus(200);
