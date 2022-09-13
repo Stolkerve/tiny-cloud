@@ -11,11 +11,6 @@ export interface IMoveFolder {
   to: string;
 }
 
-export interface IRenameFolder {
-  oldName: string;
-  newName: string;
-}
-
 export interface IFolder {
   name: string;
   dataURl?: string;
