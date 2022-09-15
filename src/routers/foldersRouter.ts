@@ -1,8 +1,10 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { ObjectId, Types } from "mongoose";
 import IFolder, {
+  createRegexOfPath,
   getLastChildName,
   IMoveFolder,
+  IRenameFolder,
   PATH_REGEX,
   REMOVE_ALL_BACKSLASH_REGEX,
 } from "../models/Folder";
@@ -59,7 +61,7 @@ router.get("/*", async (req: Request, res: Response) => {
                 cond: {
                   $regexMatch: {
                     input: "$$folder.name",
-                    regex: new RegExp("^(/" + path + ")(|/[a-z_-s0-9.]+)+$"),
+                    regex: new RegExp(createRegexOfPath(path)),
                   },
                 },
               },
@@ -133,7 +135,7 @@ router.put("/move", async (req: Request, res: Response) => {
     return;
   }
 
-  if (from.slice(0, -(getLastChildName(from).length) - 1) == to) {
+  if (from.slice(0, -getLastChildName(from).length - 1) == to) {
     res.status(500).send("Cannot move a folder on the same parent");
     return;
   }
@@ -152,17 +154,13 @@ router.put("/move", async (req: Request, res: Response) => {
                   {
                     $regexMatch: {
                       input: "$$folder.name",
-                      regex: new RegExp(
-                        "^(/" + from.substring(1) + ")(|/[a-z_-s0-9.]+)+$"
-                      ),
+                      regex: new RegExp(createRegexOfPath(from.substring(1))),
                     },
                   },
                   {
                     $regexMatch: {
                       input: "$$folder.name",
-                      regex: new RegExp(
-                        "^(/" + to.substring(1) + ")(|/[a-z_-s0-9.]+)+$"
-                      ),
+                      regex: new RegExp(createRegexOfPath(to.substring(1))),
                     },
                   },
                 ],
@@ -276,9 +274,9 @@ router.put("/move", async (req: Request, res: Response) => {
 
 router.put("/rename", async (req: Request, res: Response) => {
   const userID = res.locals.userID;
-  const { from, to }: IMoveFolder = req.body;
+  const { from, newName }: IRenameFolder = req.body;
 
-  if (!from.match(PATH_REGEX) || !to.match(PATH_REGEX) || from == to) {
+  if (!from.match(PATH_REGEX) || !newName.match(/^[a-z_-s0-9]$/)) {
     res.status(500).send("Invalid name");
     return;
   }
@@ -293,24 +291,10 @@ router.put("/rename", async (req: Request, res: Response) => {
               input: "$folders",
               as: "folder",
               cond: {
-                $or: [
-                  {
-                    $regexMatch: {
-                      input: "$$folder.name",
-                      regex: new RegExp(
-                        "^(/" + from.substring(1) + ")(|/[a-z_-s0-9.]+)+$"
-                      ),
-                    },
-                  },
-                  {
-                    $regexMatch: {
-                      input: "$$folder.name",
-                      regex: new RegExp(
-                        "^(/" + to.substring(1) + ")(|/[a-z_-s0-9.]+)+$"
-                      ),
-                    },
-                  },
-                ],
+                $regexMatch: {
+                  input: "$$folder.name",
+                  regex: new RegExp(createRegexOfPath(from.substring(1))),
+                },
               },
             },
           },
@@ -324,41 +308,43 @@ router.put("/rename", async (req: Request, res: Response) => {
     return;
   }
 
+  console.log(userFolders);
+  return;
   // Rename operation related
   // Rename only is valid if folder dont exist and have the same parents folders
-  let existToPath = true; // true if there is no match, false otherwise
-  let haveTheSameParents = true;
-
-  let renamedFolders: IFolder[] = [];
-  userFolders.forEach((v: IFolder) => {
-    existToPath = existToPath && v.name != to;
-    haveTheSameParents =
-      haveTheSameParents &&
-      from.substring(0, from.length - getLastChildName(from).length) ==
-        to.substring(0, to.length - getLastChildName(to).length) &&
-      v.name != to;
-
-    if (v.name.startsWith(from)) {
-      renamedFolders.push({
-        // @ts-ignore
-        _id: v._id,
-        name: to + v.name.substring(from.length),
-        dataURl: v.dataURl,
-      });
-    }
-  });
-
-  if (existToPath && !haveTheSameParents) {
-    res
-      .status(404)
-      .send(
-        'Parents folders of "to" value don\'t exist. If the operation is rename, bolt json params most have the same parents'
-      );
-    return;
-  }
-
-  res.json(renamedFolders);
-  return;
+  // let existToPath = true; // true if there is no match, false otherwise
+  // let haveTheSameParents = true;
+  //
+  // let renamedFolders: IFolder[] = [];
+  // userFolders.forEach((v: IFolder) => {
+  //   existToPath = existToPath && v.name != to;
+  //   haveTheSameParents =
+  //     haveTheSameParents &&
+  //     from.substring(0, from.length - getLastChildName(from).length) ==
+  //       to.substring(0, to.length - getLastChildName(to).length) &&
+  //     v.name != to;
+  //
+  //   if (v.name.startsWith(from)) {
+  //     renamedFolders.push({
+  //       // @ts-ignore
+  //       _id: v._id,
+  //       name: to + v.name.substring(from.length),
+  //       dataURl: v.dataURl,
+  //     });
+  //   }
+  // });
+  //
+  // if (existToPath && !haveTheSameParents) {
+  //   res
+  //     .status(404)
+  //     .send(
+  //       'Parents folders of "to" value don\'t exist. If the operation is rename, bolt json params most have the same parents'
+  //     );
+  //   return;
+  // }
+  //
+  // res.json(renamedFolders);
+  // return;
 });
 
 router.put("/file/move", (req: Request, res: Response) => {
