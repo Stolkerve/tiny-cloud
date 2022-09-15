@@ -41,7 +41,7 @@ router.post("/signup", async (req: Request, res: Response) => {
     password,
     folders: [userFolder],
   });
-  
+
   try {
     await newUser.save();
     res.sendStatus(200);

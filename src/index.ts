@@ -3,8 +3,8 @@ import cors from "cors";
 import morgan from "morgan";
 
 import { connectDB } from "./db";
-import userRouter from "./routers/usersRouter"
-import folderRouter from "./routers/foldersRouter"
+import userRouter from "./routers/usersRouter";
+import folderRouter from "./routers/foldersRouter";
 
 const PORT = 3000;
 
@@ -22,11 +22,10 @@ const init = async () => {
     app.listen(PORT, () => {
       console.log(`Listen on port ${PORT}`);
     });
-  } catch(e: any) {
+  } catch (e: any) {
     console.log(e.message);
     process.exit(-1);
   }
-
-}
+};
 
 init();
