@@ -8,7 +8,7 @@ import IFolder, {
   PATH_REGEX,
   REMOVE_ALL_BACKSLASH_REGEX,
 } from "../models/Folder";
-import User, { IUser } from "../models/User";
+import User from "../models/User";
 import { verifyToken } from "../token";
 
 const router = Router();
@@ -28,7 +28,7 @@ router.use(async (req: Request, res: Response, next: NextFunction) => {
 });
 
 // Get all folders and files
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", async (_req: Request, res: Response) => {
   const userID: string = res.locals.userID;
   try {
     const user = await User.findOne({ _id: userID }, "-_id folders");
@@ -87,8 +87,13 @@ router.post("/folder", async (req: Request, res: Response) => {
   const userID: string = res.locals.userID;
   let { path } = req.body as { path: string };
 
-  if (!path.length || !path.match(PATH_REGEX)) {
-    res.status(500).send("Invalid name");
+  try {
+    if (!path.length || !path.match(PATH_REGEX)) {
+      res.status(500).send("Invalid name");
+      return;
+    }
+  } catch(e: any) {
+    res.status(400).send("Incorrect json params");
     return;
   }
 
@@ -126,12 +131,17 @@ router.put("/move", async (req: Request, res: Response) => {
   const { from, to }: IMoveFolder = req.body;
 
   const isRoot = to == "/";
-  if (
-    !from.match(PATH_REGEX) ||
-    (!to.match(PATH_REGEX) && !isRoot) ||
-    from == to
-  ) {
-    res.status(500).send("Invalid name");
+  try {
+    if (
+      !from.match(PATH_REGEX) ||
+      (!to.match(PATH_REGEX) && !isRoot) ||
+      from == to
+    ) {
+      res.status(500).send("Invalid name");
+      return;
+    }
+  } catch(e: any) {
+    res.status(400).send("Incorrect json params");
     return;
   }
 
@@ -276,8 +286,14 @@ router.put("/rename", async (req: Request, res: Response) => {
   const userID = res.locals.userID;
   const { from, newName }: IRenameFolder = req.body;
 
-  if (!from.match(PATH_REGEX) || !newName.match(/^[a-z_-s0-9]$/)) {
-    res.status(500).send("Invalid name");
+  try {
+    if (!from.match(PATH_REGEX) || !newName.match(/^[a-z_-s0-9]$/)) {
+      res.status(500).send("Invalid name");
+      return;
+    }
+  }
+  catch(e: any) {
+    res.status(400).send("Incorrect json params");
     return;
   }
 
