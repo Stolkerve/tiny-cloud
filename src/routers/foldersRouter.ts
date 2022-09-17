@@ -197,9 +197,7 @@ router.put("/move", async (req: Request, res: Response) => {
       exitsMatchOfTo = true;
     }
     // check if the the new parent folder have a child with the same name
-    console.log(v.name, v.name + "/" + getLastChildName(from));
     if (v.name == v.name + from) {
-      console.log("aaa");
       res
         .status(500)
         .send(
@@ -417,7 +415,6 @@ router.delete("/*", async (req: Request, res: Response) => {
 
   const path = req.params[0].replace(REMOVE_ALL_BACKSLASH_REGEX, "/");
 
-  console.log(new RegExp(createRegexOfPath(path)))
   try {
     const updated = 
       await User.updateOne(
