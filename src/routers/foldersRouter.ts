@@ -83,7 +83,7 @@ router.get("/*", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/folder", async (req: Request, res: Response) => {
+router.post("/", async (req: Request, res: Response) => {
   const userID: string = res.locals.userID;
   let { path } = req.body as { path: string };
 
@@ -287,7 +287,7 @@ router.put("/rename", async (req: Request, res: Response) => {
   const { from, newName }: IRenameFolder = req.body;
 
   try {
-    if (!from.match(PATH_REGEX) || !newName.match(/^[a-z_-s0-9]$/)) {
+    if (!from.match(PATH_REGEX) || !newName.match(/^[a-z_\-\s0-9\.]+$/)) {
       res.status(500).send("Invalid name");
       return;
     }
@@ -296,6 +296,8 @@ router.put("/rename", async (req: Request, res: Response) => {
     res.status(400).send("Incorrect json params");
     return;
   }
+
+  const targetName = getLastChildName(from);
 
   const userFolders = (
     await User.aggregate([
@@ -307,10 +309,20 @@ router.put("/rename", async (req: Request, res: Response) => {
               input: "$folders",
               as: "folder",
               cond: {
-                $regexMatch: {
-                  input: "$$folder.name",
-                  regex: new RegExp(createRegexOfPath(from.substring(1))),
-                },
+                $or: [
+                  {
+                    $regexMatch: {
+                      input: "$$folder.name",
+                      regex: new RegExp(createRegexOfPath(from.substring(1))),
+                    },
+                  },
+                  {
+                    $regexMatch: {
+                      input: "$$folder.name",
+                      regex: new RegExp(createRegexOfPath(from.substring(1).replace(targetName, newName))),
+                    },
+                  }
+                ],
               },
             },
           },
@@ -324,54 +336,110 @@ router.put("/rename", async (req: Request, res: Response) => {
     return;
   }
 
-  console.log(userFolders);
-  return;
-  // Rename operation related
-  // Rename only is valid if folder dont exist and have the same parents folders
-  // let existToPath = true; // true if there is no match, false otherwise
-  // let haveTheSameParents = true;
-  //
-  // let renamedFolders: IFolder[] = [];
-  // userFolders.forEach((v: IFolder) => {
-  //   existToPath = existToPath && v.name != to;
-  //   haveTheSameParents =
-  //     haveTheSameParents &&
-  //     from.substring(0, from.length - getLastChildName(from).length) ==
-  //       to.substring(0, to.length - getLastChildName(to).length) &&
-  //     v.name != to;
-  //
-  //   if (v.name.startsWith(from)) {
-  //     renamedFolders.push({
-  //       // @ts-ignore
-  //       _id: v._id,
-  //       name: to + v.name.substring(from.length),
-  //       dataURl: v.dataURl,
-  //     });
-  //   }
-  // });
-  //
-  // if (existToPath && !haveTheSameParents) {
-  //   res
-  //     .status(404)
-  //     .send(
-  //       'Parents folders of "to" value don\'t exist. If the operation is rename, bolt json params most have the same parents'
-  //     );
-  //   return;
-  // }
-  //
-  // res.json(renamedFolders);
-  // return;
+  let userFoldersIds: ObjectId[] = []
+  for(let i = 0; i < userFolders.length; i++) {
+    const v = userFolders[i];
+    const newNewName = v.name.replace(targetName, newName);
+
+    if (v.name == newNewName) {
+      res.status(500).send("")
+      return;
+    }
+
+    v.name = newNewName;
+    // @ts-ignore
+    userFoldersIds.push(v._id)
+  }
+ 
+  try {
+    const result = await User.updateOne(
+      {
+        _id: userID,
+      },
+      [
+        {
+          $set: {
+            folders: {
+              $concatArrays: [
+                {
+                  $map: {
+                    input: "$folders",
+                    as: "folder",
+                    in: {
+                      $cond: [
+                        { $in: ["$$folder._id", userFoldersIds] },
+                        {
+                          $mergeObjects: [
+                            "$$folder",
+                            {
+                              $arrayElemAt: [
+                                {
+                                  $filter: {
+                                    input: userFolders,
+                                    cond: {
+                                      $eq: ["$$this._id", "$$folder._id"],
+                                    },
+                                  },
+                                },
+                                0,
+                              ],
+                            },
+                          ],
+                        },
+                        "$$folder",
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ]
+    );
+    if (result.modifiedCount) {
+      res.sendStatus(200);
+      return;
+    }
+    res.status(500).send("None folder was updated");
+  } catch (error: any) {
+    res.status(500).send(error.message);
+  }
 });
 
-router.put("/file/move", (req: Request, res: Response) => {
+router.put("/file/move", async (req: Request, res: Response) => {
   const userID = res.locals.userID;
   const { from, to }: IMoveFolder = req.body;
 });
 
-router.delete("/*", (req: Request, res: Response) => {
+router.delete("/*", async (req: Request, res: Response) => {
   const userID = res.locals.userID;
 
   const path = req.params[0].replace(REMOVE_ALL_BACKSLASH_REGEX, "/");
+
+  console.log(new RegExp(createRegexOfPath(path)))
+  try {
+    const updated = 
+      await User.updateOne(
+        { _id: userID }, 
+        {
+          $pull: {
+            folders: {
+              name: new RegExp(createRegexOfPath(path))
+            }
+          }
+        }, 
+      );
+
+    if (updated.modifiedCount) {
+      res.sendStatus(200)
+      return;
+    }
+
+    res.status(404).send("Folder not exist");
+  } catch (error: any) {
+    res.status(500).send(error.message);
+  }
 });
 
 export default router;

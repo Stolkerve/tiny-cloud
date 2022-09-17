@@ -28,7 +28,7 @@ export const getLastChildName = (path: string) => {
 };
 
 export const createRegexOfPath = (path: string): string => {
-  return "^(/" + path + ")(|/[a-z_-s0-9.]+)+$";
+  return "^(/" + path + ")(|/[a-z_\-s0-9.]+)+$";
 };
 
 export default IFolder;
