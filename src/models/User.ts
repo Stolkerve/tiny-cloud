@@ -16,7 +16,7 @@ const userSchema = new Schema<IUser>({
     type: [
       {
         name: { type: String, required: true, maxlength: 255 },
-        dataID: { type: String, required: false },
+        dataURL: { type: String, required: false },
       },
     ],
     required: true,

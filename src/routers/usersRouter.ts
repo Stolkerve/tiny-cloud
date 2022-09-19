@@ -1,8 +1,10 @@
+import fs from "fs/promises";
 import { Router, Request, Response } from "express";
 import bcrypt from "bcrypt";
 import User, { IUser } from "../models/User";
 import { IFolder } from "../models/Folder";
-import { genToken } from "../token";
+import { genToken } from "../utils/token";
+import { USERS_FOLDERS_PATH } from "../utils/foldersAndFiles";
 
 const router = Router();
 
@@ -43,6 +45,7 @@ router.post("/signup", async (req: Request, res: Response) => {
   });
 
   try {
+    await fs.mkdir(USERS_FOLDERS_PATH + "/" + newUser._id);
     await newUser.save();
     res.sendStatus(200);
   } catch (error: any) {

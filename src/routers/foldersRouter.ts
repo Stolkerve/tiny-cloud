@@ -1,15 +1,25 @@
+import fs from "fs/promises";
+import zlib from "fast-zlib";
 import { Router, Request, Response, NextFunction } from "express";
 import { ObjectId, Types } from "mongoose";
-import IFolder, {
+import {
   createRegexOfPath,
+  FILE_REGEX,
   getLastChildName,
+  PATH_REGEX,
+  removeLastCharBackSlash,
+  REMOVE_ALL_BACKSLASH_REGEX,
+  USERS_FOLDERS_PATH,
+} from "../utils/foldersAndFiles";
+import {
+  IFolder,
   IMoveFolder,
   IRenameFolder,
-  PATH_REGEX,
-  REMOVE_ALL_BACKSLASH_REGEX,
+  IFileInput,
 } from "../models/Folder";
 import User from "../models/User";
 import { verifyToken } from "../token";
+import { deflateRaw } from "zlib";
 
 const router = Router();
 
@@ -92,14 +102,16 @@ router.post("/", async (req: Request, res: Response) => {
       res.status(500).send("Invalid name");
       return;
     }
-  } catch(e: any) {
+
+    path = removeLastCharBackSlash(path);
+  } catch (e: any) {
     res.status(400).send("Incorrect json params");
     return;
   }
 
   const newFolder = {
     name: path,
-    type: 0,
+    dataURl: undefined,
   } as IFolder;
 
   try {
@@ -107,6 +119,7 @@ router.post("/", async (req: Request, res: Response) => {
       {
         _id: userID,
         "folders.name": { $ne: path },
+        "folders.dataURl": { $eq: undefined },
       },
       { $push: { folders: newFolder } }
     );
@@ -122,13 +135,66 @@ router.post("/", async (req: Request, res: Response) => {
   res.status(500).send("Folder already exits!!");
 });
 
-router.post("/file", (req: Request, res: Response) => {
+// Use json would be ideal, but using the on function of Request is more efficient
+router.post("/file/*", async (req: Request, res: Response) => {
   const userID = res.locals.userID;
+
+  const path = "/" + req.params[0].replace(REMOVE_ALL_BACKSLASH_REGEX, "/");
+  const fileName = getLastChildName(path);
+
+  // I dont care it have a extension or not, so  I dont check that
+  if (!fileName.length) {
+    res.status(400).send("Missing filename!");
+  }
+
+  const newFile = {
+    name: path,
+    dataURL: new Types.ObjectId().toString(),
+  } as IFolder;
+
+  try {
+    const result = await User.updateOne(
+      {
+        _id: userID,
+        $or: [
+          { "folders.name": { $ne: path } },
+          { "folders.dataURL": { $ne: undefined } },
+        ],
+      },
+      { $push: { folders: newFile } }
+    );
+
+    if (result.modifiedCount) {
+      const filePath =
+        USERS_FOLDERS_PATH + "/" + userID + "/" + newFile.dataURL;
+      const deflate = new zlib.BrotliCompress();
+
+      const compress = (data: Buffer | string, flag?: number) => {
+        return new Promise<Buffer>((resolve) => {resolve(deflate.process(data, flag))});
+      };
+      req
+        .on("data", async (chunk: Buffer) => {
+          await compress(chunk, zlib.constants.BROTLI_OPERATION_PROCESS);
+          console.log()
+        })
+        .on("close", async () => {
+          let data = await compress("", zlib.constants.BROTLI_OPERATION_FLUSH);
+          await fs.writeFile(filePath, data);
+          res.sendStatus(200);
+          return;
+        });
+      return;
+    }
+
+    res.status(500).send("File already exits!!!");
+  } catch (error: any) {
+    res.status(500).send(error.message);
+  }
 });
 
 router.put("/move", async (req: Request, res: Response) => {
   const userID = res.locals.userID;
-  const { from, to }: IMoveFolder = req.body;
+  let { from, to }: IMoveFolder = req.body;
 
   const isRoot = to == "/";
   try {
@@ -140,7 +206,10 @@ router.put("/move", async (req: Request, res: Response) => {
       res.status(500).send("Invalid name");
       return;
     }
-  } catch(e: any) {
+
+    from = removeLastCharBackSlash(from);
+    to = removeLastCharBackSlash(to);
+  } catch (e: any) {
     res.status(400).send("Incorrect json params");
     return;
   }
@@ -212,7 +281,7 @@ router.put("/move", async (req: Request, res: Response) => {
         name: !isRoot
           ? to + v.name
           : v.name.slice(v.name.indexOf(getLastChildName(from)) - 1),
-        dataURl: v.dataURl,
+        dataURl: v.dataURL,
       });
       // @ts-ignore
       movedFoldersIds.push(v._id);
@@ -282,15 +351,16 @@ router.put("/move", async (req: Request, res: Response) => {
 
 router.put("/rename", async (req: Request, res: Response) => {
   const userID = res.locals.userID;
-  const { from, newName }: IRenameFolder = req.body;
+  let { from, newName }: IRenameFolder = req.body;
 
   try {
     if (!from.match(PATH_REGEX) || !newName.match(/^[a-z_\-\s0-9\.]+$/)) {
       res.status(500).send("Invalid name");
       return;
     }
-  }
-  catch(e: any) {
+
+    from = removeLastCharBackSlash(from);
+  } catch (e: any) {
     res.status(400).send("Incorrect json params");
     return;
   }
@@ -317,9 +387,13 @@ router.put("/rename", async (req: Request, res: Response) => {
                   {
                     $regexMatch: {
                       input: "$$folder.name",
-                      regex: new RegExp(createRegexOfPath(from.substring(1).replace(targetName, newName))),
+                      regex: new RegExp(
+                        createRegexOfPath(
+                          from.substring(1).replace(targetName, newName)
+                        )
+                      ),
                     },
-                  }
+                  },
                 ],
               },
             },
@@ -334,21 +408,21 @@ router.put("/rename", async (req: Request, res: Response) => {
     return;
   }
 
-  let userFoldersIds: ObjectId[] = []
-  for(let i = 0; i < userFolders.length; i++) {
+  let userFoldersIds: ObjectId[] = [];
+  for (let i = 0; i < userFolders.length; i++) {
     const v = userFolders[i];
     const newNewName = v.name.replace(targetName, newName);
 
     if (v.name == newNewName) {
-      res.status(500).send("")
+      res.status(500).send("");
       return;
     }
 
     v.name = newNewName;
     // @ts-ignore
-    userFoldersIds.push(v._id)
+    userFoldersIds.push(v._id);
   }
- 
+
   try {
     const result = await User.updateOne(
       {
@@ -416,20 +490,19 @@ router.delete("/*", async (req: Request, res: Response) => {
   const path = req.params[0].replace(REMOVE_ALL_BACKSLASH_REGEX, "/");
 
   try {
-    const updated = 
-      await User.updateOne(
-        { _id: userID }, 
-        {
-          $pull: {
-            folders: {
-              name: new RegExp(createRegexOfPath(path))
-            }
-          }
-        }, 
-      );
+    const updated = await User.updateOne(
+      { _id: userID },
+      {
+        $pull: {
+          folders: {
+            name: new RegExp(createRegexOfPath(path)),
+          },
+        },
+      }
+    );
 
     if (updated.modifiedCount) {
-      res.sendStatus(200)
+      res.sendStatus(200);
       return;
     }
 
